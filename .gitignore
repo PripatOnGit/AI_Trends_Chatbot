@@ -4,3 +4,5 @@ __pycache__/
 .env
 *.reference.py
 *.reference.sql
+/docs/
+/PLAN.md
