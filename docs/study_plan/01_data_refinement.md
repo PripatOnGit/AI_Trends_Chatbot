@@ -21,4 +21,10 @@ An LLM generating SQL is only as good as the schema you show it. `raw_survey_dat
 
 ## Notes (fill in as you go)
 
-_Use this space for what you learn while building Phase 1 — what worked, what the CTAS query ended up looking like, any row-count mismatches you had to chase down._
+Went pandas-side: `pd.read_sql` -> clean in a DataFrame -> run the DDL file -> `df.to_sql(..., if_exists="append")`.
+
+**Row-count mismatch chased down:** the plan said "drop rows with NULL ai_use_status/ai_sentiment", but requiring *both* non-null skewed the 2024 adoption rate to 81.8% instead of the known 61.8%. Root cause: in the 2024 survey, everyone who answered `"No, and I don't plan to"` has NULL `AISent` — the sentiment question was skipped for non-adopters, so it's *missing not at random*, not just noise. Dropping on both columns silently deleted ~59k of that bucket and inflated the "Yes" share. Fix: only require `ai_use_status` (AISelect) non-null; leave `ai_sentiment` nullable, and let sentiment-specific queries add their own `WHERE ai_sentiment IS NOT NULL`. That's now documented directly in the table's `COMMENT ON COLUMN` so the NL2SQL agent (and anyone reading the schema) knows not to assume sentiment-completeness.
+
+Also found `AISelect` itself has cross-year schema drift, separate from the already-known `YearsCodePro` one: 2024 uses a flat `'Yes'`, 2025 splits it into `'Yes, I use AI tools daily/weekly/monthly...'`. Normalized all `'Yes, ...'` variants back down to `'Yes'` in `ai_use_status` so the two years stay comparable — that's what made the 61.8% -> 78.5% checkpoint match.
+
+Checkpoint: `SELECT * FROM ai_trends_refined LIMIT 5` returns clean rows; adoption check comes out (2024, 61.8), (2025, 78.5) — matches the source README exactly.
